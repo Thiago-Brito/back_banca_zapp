@@ -2,6 +2,8 @@ package com.bancazapp.banca_zapp.dto;
 
 import java.util.UUID;
 
+import com.bancazapp.banca_zapp.entity.TipoVisita;
+
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 import lombok.AllArgsConstructor;
@@ -20,6 +22,8 @@ public class VisitaItemDto {
     @NotNull
     private Long produtoId;
 
+    private TipoVisita tipo;
+
     @NotNull
     @PositiveOrZero
     private Integer possuia;
@@ -36,7 +40,5 @@ public class VisitaItemDto {
     @PositiveOrZero
     private Integer retirado;
 
-    @NotNull
-    @PositiveOrZero
     private Integer possuiAgora;
 }

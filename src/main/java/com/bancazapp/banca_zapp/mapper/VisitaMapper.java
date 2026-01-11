@@ -23,12 +23,13 @@ public class VisitaMapper {
         }
         Long clienteId = entity.getCliente() != null ? entity.getCliente().getId() : null;
         List<VisitaItemDto> itens = entity.getItens().stream()
-                .map(visitaItemMapper::toDto)
+                .map(item -> visitaItemMapper.toDto(item, entity.getTipo()))
                 .toList();
         return new VisitaDto(
                 entity.getId(),
                 clienteId,
                 entity.getDataVisita(),
+                entity.getTipo(),
                 entity.getObservacoes(),
                 itens
         );

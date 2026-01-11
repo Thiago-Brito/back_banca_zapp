@@ -13,11 +13,32 @@ spring:
         format_sql: true
     open-in-view: false
     show-sql: false
+  mail:
+    host: localhost
+    port: 1025
+    username:
+    password:
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
 
 server:
   port: 8080
 
 app:
+  mail:
+    enabled: false
+    from: no-reply@bancazapp.local
+    default-recipient: ""
+  nota-conferencia:
+    nome-fantasia: "Banca Zapp"
+    razao-social: "Banca Zapp LTDA"
+    cnpj: "00.000.000/0000-00"
+    endereco: "Endereco nao informado"
+    telefone: "(00) 00000-0000"
   security:
     jwt:
       issuer: banca-zapp

@@ -49,3 +49,22 @@ CREATE DATABASE banca_zapp;
 - CORS liberado para consumo do frontend.
 - DTOs sao usados em todas as respostas.
 - Estrutura JWT preparada em `JwtService` para evolucao futura.
+- Envio de e-mail usa `spring-boot-starter-mail` com suporte a MailHog.
+
+## E-mail (opcional)
+
+Para ativar:
+
+```
+app:
+  mail:
+    enabled: true
+    from: no-reply@bancazapp.local
+    default-recipient: seu-email@exemplo.com
+spring:
+  mail:
+    host: localhost
+    port: 1025
+```
+
+O envio e disparado apos o commit da visita e falhas nao impedem o salvamento.

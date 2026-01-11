@@ -54,10 +54,19 @@ public class NotaConferenciaService {
     public byte[] gerarNotaConferencia(UUID visitaId) {
         Visita visita = visitaRepository.findWithItensById(visitaId)
                 .orElseThrow(() -> new ResourceNotFoundException("Visita nao encontrada: " + visitaId));
-        return gerarPdf(visita);
+        return gerarPdfA4(visita);
     }
 
-    private byte[] gerarPdf(Visita visita) {
+    public byte[] gerarNotaConferencia(UUID visitaId, String formato) {
+        Visita visita = visitaRepository.findWithItensById(visitaId)
+                .orElseThrow(() -> new ResourceNotFoundException("Visita nao encontrada: " + visitaId));
+        if ("80mm".equalsIgnoreCase(formato)) {
+            return gerarPdf80mm(visita);
+        }
+        return gerarPdfA4(visita);
+    }
+
+    private byte[] gerarPdfA4(Visita visita) {
         try (PDDocument document = new PDDocument();
              ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
              PdfWriter writer = new PdfWriter(document)) {
@@ -300,6 +309,104 @@ public class NotaConferenciaService {
         }
     }
 
+    private byte[] gerarPdf80mm(Visita visita) {
+        try (PDDocument document = new PDDocument();
+             ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+
+            boolean venda = visita.getTipo() == TipoVisita.VENDA;
+            float pageWidth = mmToPoints(80f);
+            float margin = 10f;
+            float contentWidth = pageWidth - (margin * 2);
+
+            List<ReceiptElement> elementos = new ArrayList<>();
+            adicionarCentralizado(elementos, texto(properties.getNomeFantasia()).toUpperCase(Locale.ROOT), FONTE_NEGRITO, 11);
+            adicionarCentralizado(elementos, "Razao social: " + texto(properties.getRazaoSocial()), FONTE_PADRAO, 8);
+            adicionarCentralizado(elementos, "CNPJ: " + texto(properties.getCnpj()), FONTE_PADRAO, 8);
+            adicionarCentralizado(elementos, "Telefone: " + texto(properties.getTelefone()), FONTE_PADRAO, 8);
+            adicionarCentralizado(elementos, "Endereco: " + texto(properties.getEndereco()), FONTE_PADRAO, 8);
+            elementos.add(ReceiptElement.separator());
+
+            adicionarCentralizado(elementos, "NOTA DE CONFERÊNCIA", FONTE_NEGRITO, 10);
+            for (String linha : wrapText(TEXTO_SEM_VALOR_FISCAL, contentWidth, FONTE_PADRAO, 8)) {
+                adicionarCentralizado(elementos, linha, FONTE_PADRAO, 8);
+            }
+            elementos.add(ReceiptElement.blank(6));
+
+            elementos.add(ReceiptElement.text("Cliente: " + texto(visita.getCliente().getNome()), FONTE_PADRAO, 8));
+            elementos.add(ReceiptElement.text("Data: " + visita.getDataVisita().format(DATA_FORMATTER), FONTE_PADRAO, 8));
+            elementos.add(ReceiptElement.text("Tipo: " + formatarTipo(visita.getTipo()), FONTE_PADRAO, 8));
+
+            elementos.add(ReceiptElement.blank(4));
+            elementos.add(ReceiptElement.text("Observacoes:", FONTE_NEGRITO, 8));
+            List<String> obsLinhas = wrapText(texto(visita.getObservacoes()), contentWidth, FONTE_PADRAO, 8);
+            for (String linha : obsLinhas) {
+                elementos.add(ReceiptElement.text(linha, FONTE_PADRAO, 8));
+            }
+            elementos.add(ReceiptElement.separator());
+
+            int totalItens = 0;
+            BigDecimal totalValor = BigDecimal.ZERO;
+            List<VisitaItem> itens = visita.getItens();
+            for (int i = 0; i < itens.size(); i++) {
+                VisitaItem item = itens.get(i);
+                int quantidade = calcularQuantidade(item, venda);
+                totalItens += quantidade;
+
+                BigDecimal precoUnitario = item.getProduto().getPreco();
+                BigDecimal totalItem = BigDecimal.ZERO;
+                if (venda) {
+                    totalItem = precoUnitario.multiply(BigDecimal.valueOf(item.getVendido()));
+                    totalValor = totalValor.add(totalItem);
+                }
+
+                List<String> nomeProduto = wrapText(texto(item.getProduto().getNome()), contentWidth, FONTE_NEGRITO, 8);
+                for (String linha : nomeProduto) {
+                    elementos.add(ReceiptElement.text(linha, FONTE_NEGRITO, 8));
+                }
+                elementos.add(ReceiptElement.text("Qtd: " + quantidade, FONTE_PADRAO, 8));
+                if (venda) {
+                    elementos.add(ReceiptElement.text("Vlr unit: " + formatarMoeda(precoUnitario), FONTE_PADRAO, 8));
+                    elementos.add(ReceiptElement.text("Subtotal: " + formatarMoeda(totalItem), FONTE_PADRAO, 8));
+                }
+                if (itens.size() > 1 && i < itens.size() - 1) {
+                    elementos.add(ReceiptElement.separator());
+                }
+            }
+
+            elementos.add(ReceiptElement.separator());
+            elementos.add(ReceiptElement.text("Total de itens: " + totalItens, FONTE_PADRAO, 8));
+            if (venda) {
+                BigDecimal valorBruto = totalValor;
+                BigDecimal percentual = valorSeguro(visita.getCliente().getComissao());
+                BigDecimal desconto = valorBruto.multiply(percentual)
+                        .divide(CEM, 2, RoundingMode.HALF_UP);
+                BigDecimal valorAPagar = valorBruto.subtract(desconto).setScale(2, RoundingMode.HALF_UP);
+
+                elementos.add(ReceiptElement.text("Valor bruto: " + formatarMoeda(valorBruto), FONTE_PADRAO, 8));
+                elementos.add(ReceiptElement.text("Desconto (" + formatarPercentual(percentual) + "): " + formatarMoeda(desconto), FONTE_PADRAO, 8));
+                elementos.add(ReceiptElement.separator());
+                elementos.add(ReceiptElement.text("Valor a pagar: " + formatarMoeda(valorAPagar), FONTE_NEGRITO, 10));
+            }
+
+            elementos.add(ReceiptElement.blank(10));
+            elementos.add(ReceiptElement.text("Assinatura: __________________________", FONTE_PADRAO, 8));
+            elementos.add(ReceiptElement.blank(6));
+            for (String linha : wrapText(TEXTO_SEM_VALOR_FISCAL, contentWidth, FONTE_NEGRITO, 9)) {
+                adicionarCentralizado(elementos, linha, FONTE_NEGRITO, 9);
+            }
+
+            float alturaPagina = calcularAlturaPagina(elementos, margin);
+            PDRectangle pageSize = new PDRectangle(pageWidth, alturaPagina);
+            try (PdfWriter writer = new PdfWriter(document, pageSize, margin)) {
+                escreverElementosCupom(writer, elementos, contentWidth);
+            }
+            document.save(outputStream);
+            return outputStream.toByteArray();
+        } catch (IOException ex) {
+            throw new IllegalStateException("Falha ao gerar Nota de Conferência.", ex);
+        }
+    }
+
     private static String formatarTipo(TipoVisita tipo) {
         return tipo == TipoVisita.VENDA ? "VENDA" : "ENTREGA / DEVOLUCAO";
     }
@@ -338,6 +445,68 @@ public class NotaConferenciaService {
 
     private static BigDecimal valorSeguro(BigDecimal valor) {
         return valor == null ? BigDecimal.ZERO : valor;
+    }
+
+    private static float mmToPoints(float mm) {
+        return mm * 72f / 25.4f;
+    }
+
+    private static List<String> wrapText(String text, float maxWidth, PDFont font, float fontSize) throws IOException {
+        if (text == null || text.isBlank()) {
+            return List.of("-");
+        }
+        List<String> linhas = new ArrayList<>();
+        String[] palavras = text.split("\\s+");
+        StringBuilder linha = new StringBuilder();
+        for (String palavra : palavras) {
+            String teste = linha.length() == 0 ? palavra : linha + " " + palavra;
+            if (font.getStringWidth(teste) / 1000f * fontSize > maxWidth) {
+                linhas.add(linha.toString());
+                linha = new StringBuilder(palavra);
+            } else {
+                linha = new StringBuilder(teste);
+            }
+        }
+        if (linha.length() > 0) {
+            linhas.add(linha.toString());
+        }
+        return linhas;
+    }
+
+    private static void adicionarCentralizado(List<ReceiptElement> elementos, String texto, PDFont font, float size) {
+        elementos.add(ReceiptElement.center(texto, font, size));
+    }
+
+    private static float calcularAlturaPagina(List<ReceiptElement> elementos, float margin) {
+        float altura = margin;
+        for (ReceiptElement elemento : elementos) {
+            altura += elemento.height();
+        }
+        altura += margin;
+        return Math.max(altura, 200f);
+    }
+
+    private static void escreverElementosCupom(PdfWriter writer, List<ReceiptElement> elementos, float contentWidth)
+            throws IOException {
+        for (ReceiptElement elemento : elementos) {
+            if (elemento.type == ReceiptElementType.SEPARATOR) {
+                writer.writeAt(elemento.text, elemento.font, elemento.size, writer.getMargin(), writer.getY());
+                writer.moveDown(elemento.height());
+                continue;
+            }
+            if (elemento.type == ReceiptElementType.BLANK) {
+                writer.moveDown(elemento.height());
+                continue;
+            }
+            float textY = writer.getY();
+            float x = writer.getMargin();
+            if (elemento.align == ReceiptAlign.CENTER) {
+                float textWidth = writer.textWidth(elemento.text, elemento.font, elemento.size);
+                x = writer.getMargin() + (contentWidth - textWidth) / 2;
+            }
+            writer.writeAt(elemento.text, elemento.font, elemento.size, x, textY);
+            writer.moveDown(elemento.height());
+        }
     }
 
     private static String ajustarTexto(String texto, float maxWidth, PDFont font, float fontSize) throws IOException {
@@ -422,26 +591,86 @@ public class NotaConferenciaService {
         writer.drawLine(tableLeft + tableWidth, topY, tableLeft + tableWidth, bottomY);
     }
 
+    private enum ReceiptElementType {
+        TEXT,
+        SEPARATOR,
+        BLANK
+    }
+
+    private enum ReceiptAlign {
+        LEFT,
+        CENTER
+    }
+
+    private static class ReceiptElement {
+        private final ReceiptElementType type;
+        private final String text;
+        private final PDFont font;
+        private final float size;
+        private final ReceiptAlign align;
+        private final float height;
+
+        private ReceiptElement(ReceiptElementType type, String text, PDFont font, float size, ReceiptAlign align, float height) {
+            this.type = type;
+            this.text = text;
+            this.font = font;
+            this.size = size;
+            this.align = align;
+            this.height = height;
+        }
+
+        private static ReceiptElement text(String text, PDFont font, float size) {
+            return new ReceiptElement(ReceiptElementType.TEXT, text, font, size, ReceiptAlign.LEFT, size + 3);
+        }
+
+        private static ReceiptElement center(String text, PDFont font, float size) {
+            return new ReceiptElement(ReceiptElementType.TEXT, text, font, size, ReceiptAlign.CENTER, size + 3);
+        }
+
+        private static ReceiptElement separator() {
+            return new ReceiptElement(ReceiptElementType.SEPARATOR, "--------------------------------", FONTE_PADRAO, 10, ReceiptAlign.LEFT, 14f);
+        }
+
+        private static ReceiptElement blank(float height) {
+            return new ReceiptElement(ReceiptElementType.BLANK, null, null, 0, ReceiptAlign.LEFT, height);
+        }
+
+        private float height() {
+            return height;
+        }
+    }
+
     private static class PdfWriter implements Closeable {
 
         private final PDDocument document;
         private PDPage page;
         private PDPageContentStream content;
-        private final float margin = 40f;
+        private final PDRectangle pageSize;
+        private final float margin;
         private final float leading = 14f;
         private float y;
 
         private PdfWriter(PDDocument document) throws IOException {
+            this(document, PDRectangle.A4, 40f);
+        }
+
+        private PdfWriter(PDDocument document, PDRectangle pageSize, float margin) throws IOException {
             this.document = document;
+            this.pageSize = pageSize;
+            this.margin = margin;
             newPage();
         }
 
-        private void newPage() throws IOException {
+        private void newPage(PDRectangle pageSize) throws IOException {
             closeCurrentContent();
-            page = new PDPage(PDRectangle.A4);
+            page = new PDPage(pageSize);
             document.addPage(page);
             content = new PDPageContentStream(document, page);
             y = page.getMediaBox().getHeight() - margin;
+        }
+
+        private void newPage() throws IOException {
+            newPage(pageSize);
         }
 
         private void closeCurrentContent() throws IOException {

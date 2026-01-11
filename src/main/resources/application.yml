@@ -2,9 +2,9 @@ spring:
   application:
     name: banca_zapp
   datasource:
-    url: jdbc:postgresql://localhost:5432/banca_zapp
-    username: postgres
-    password: 123
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/banca_zapp}
+    username: ${DATABASE_USERNAME:postgres}
+    password: ${DATABASE_PASSWORD:123}
   jpa:
     hibernate:
       ddl-auto: update
@@ -14,25 +14,25 @@ spring:
     open-in-view: false
     show-sql: false
   mail:
-    host: localhost
-    port: 1025
-    username:
-    password:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
     properties:
       mail:
         smtp:
-          auth: false
+          auth: ${MAIL_SMTP_AUTH:false}
           starttls:
-            enable: false
+            enable: ${MAIL_SMTP_STARTTLS:false}
 
 server:
-  port: 8080
+  port: ${PORT:8080}
 
 app:
   mail:
-    enabled: false
-    from: no-reply@bancazapp.local
-    default-recipient: ""
+    enabled: ${APP_MAIL_ENABLED:false}
+    from: ${APP_MAIL_FROM:no-reply@bancazapp.local}
+    default-recipient: ${APP_MAIL_DEFAULT_RECIPIENT:}
   nota-conferencia:
     nome-fantasia: "Banca Zapp"
     razao-social: "Banca Zapp LTDA"

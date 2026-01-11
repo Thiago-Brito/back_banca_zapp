@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: banca_zapp
+  datasource:
+    url: jdbc:postgresql://localhost:5432/banca_zapp
+    username: postgres
+    password: 123
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false
+    show-sql: false
+
+server:
+  port: 8080
+
+app:
+  security:
+    jwt:
+      issuer: banca-zapp
+      expiration-minutes: 120

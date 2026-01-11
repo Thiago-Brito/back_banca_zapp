@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.time.format.DateTimeFormatter;
@@ -39,6 +40,7 @@ public class NotaConferenciaService {
     private static final float PADDING_TEXTO = 4f;
     private static final float ESPACAMENTO_SECAO = 10f;
     private static final float ESPACAMENTO_LINHA_FORM = 18f;
+    private static final BigDecimal CEM = BigDecimal.valueOf(100);
 
     private final VisitaRepository visitaRepository;
     private final NotaConferenciaProperties properties;
@@ -87,16 +89,32 @@ public class NotaConferenciaService {
             writer.writeAt("Endereco: " + texto(properties.getEndereco()), FONTE_PADRAO, 10, headerTextX, headerTextY - 60);
             writer.setY(headerBottom - ESPACAMENTO_SECAO);
 
-            float dadosHeight = 88f;
+            float dadosHeightBase = 88f;
             float dadosTop = writer.getY();
-            float dadosBottom = dadosTop - dadosHeight;
-            writer.drawRect(margin, dadosBottom, contentWidth, dadosHeight);
-            writer.writeAt("Dados da visita", FONTE_NEGRITO, 11, margin + 6, dadosTop - 14);
             float linha1Y = dadosTop - 30;
             float linha2Y = linha1Y - ESPACAMENTO_LINHA_FORM;
             float linha3Y = linha2Y - ESPACAMENTO_LINHA_FORM;
             float meioX = margin + (contentWidth / 2);
-            writer.drawLine(meioX, dadosTop - 22, meioX, dadosBottom + 6);
+
+            float boxPadding = 6f;
+            float obsBoxLeft = margin + boxPadding;
+            float obsBoxRight = margin + contentWidth - boxPadding;
+            float obsBoxWidth = obsBoxRight - obsBoxLeft;
+            float obsBoxTop = linha3Y - 4;
+
+            String textoObs = texto(visita.getObservacoes());
+            List<String> obsLinhas = writer.wrapText(textoObs, obsBoxWidth - (boxPadding * 2), FONTE_PADRAO, 10);
+            float alturaLinha = 12f;
+            int linhasUsadas = Math.max(obsLinhas.size(), 1);
+            float obsBoxHeight = (linhasUsadas * alturaLinha) + (boxPadding * 2);
+            float obsBoxBottom = obsBoxTop - obsBoxHeight;
+
+            float dadosBottomBase = dadosTop - dadosHeightBase;
+            float dadosBottom = Math.min(dadosBottomBase, obsBoxBottom - boxPadding);
+            float dadosHeight = dadosTop - dadosBottom;
+
+            writer.drawRect(margin, dadosBottom, contentWidth, dadosHeight);
+            writer.writeAt("Dados da visita", FONTE_NEGRITO, 11, margin + 6, dadosTop - 14);
 
             desenharLinhaFormulario(writer, "Cliente:", texto(visita.getCliente().getNome()),
                     margin + 6, linha1Y, margin + contentWidth - 6);
@@ -105,19 +123,13 @@ public class NotaConferenciaService {
             desenharLinhaFormulario(writer, "Tipo da visita:", formatarTipo(visita.getTipo()),
                     meioX + 6, linha2Y, margin + contentWidth - 6);
 
-            writer.writeAt("Observacoes:", FONTE_PADRAO, 10, margin + 6, linha3Y);
-            float obsBoxTop = linha3Y + 6;
-            float obsBoxBottom = dadosBottom + 6;
-            float obsBoxLeft = margin + 90;
-            float obsBoxWidth = contentWidth - 96;
-            writer.drawRect(obsBoxLeft, obsBoxBottom, obsBoxWidth, obsBoxTop - obsBoxBottom);
-            List<String> obsLinhas = writer.wrapText(texto(visita.getObservacoes()), obsBoxWidth - (PADDING_TEXTO * 2),
-                    FONTE_PADRAO, 10);
-            float obsTextY = obsBoxTop - 12;
-            for (int i = 0; i < Math.min(obsLinhas.size(), 2); i++) {
-                writer.writeAt(obsLinhas.get(i), FONTE_PADRAO, 10, obsBoxLeft + PADDING_TEXTO, obsTextY - (i * 12));
+            writer.writeAt("Observacoes:", FONTE_PADRAO, 10, margin + 6, linha3Y );
+            writer.drawRect(obsBoxLeft, obsBoxBottom, obsBoxWidth, obsBoxHeight);
+            float obsTextY = obsBoxTop - boxPadding - 2;
+            for (int i = 0; i < linhasUsadas; i++) {
+                writer.writeAt(obsLinhas.get(i), FONTE_PADRAO, 10, obsBoxLeft + boxPadding, obsTextY - (i * alturaLinha) -5);
             }
-            writer.setY(dadosBottom - ESPACAMENTO_SECAO);
+            writer.setY(obsBoxBottom - ESPACAMENTO_SECAO);
 
             writer.moveDown(10);
             writer.writeLine("Produtos", FONTE_NEGRITO, 12);
@@ -248,9 +260,29 @@ public class NotaConferenciaService {
             writer.writeAt(totalItensTexto, FONTE_PADRAO, 11, totalItensX, writer.getY());
             writer.newLine();
             if (venda) {
-                String valorTotalTexto = "Valor total: " + formatarMoeda(totalValor);
-                float valorTotalX = writer.getPageWidth() - writer.getMargin() - writer.textWidth(valorTotalTexto, FONTE_PADRAO, 11);
-                writer.writeAt(valorTotalTexto, FONTE_PADRAO, 11, valorTotalX, writer.getY());
+                BigDecimal valorBruto = totalValor;
+                BigDecimal percentual = valorSeguro(visita.getCliente().getComissao());
+                BigDecimal desconto = valorBruto.multiply(percentual)
+                        .divide(CEM, 2, RoundingMode.HALF_UP);
+                BigDecimal valorAPagar = valorBruto.subtract(desconto).setScale(2, RoundingMode.HALF_UP);
+
+                String valorBrutoTexto = "Valor bruto: " + formatarMoeda(valorBruto);
+                float valorBrutoX = writer.getPageWidth() - writer.getMargin() - writer.textWidth(valorBrutoTexto, FONTE_PADRAO, 11);
+                writer.writeAt(valorBrutoTexto, FONTE_PADRAO, 11, valorBrutoX, writer.getY());
+                writer.newLine();
+
+                String descontoTexto = "Desconto (" + formatarPercentual(percentual) + "): " + formatarMoeda(desconto);
+                float descontoX = writer.getPageWidth() - writer.getMargin() - writer.textWidth(descontoTexto, FONTE_PADRAO, 11);
+                writer.writeAt(descontoTexto, FONTE_PADRAO, 11, descontoX, writer.getY());
+                writer.newLine();
+
+                float linhaY = writer.getY() + 4;
+                writer.drawLine(writer.getMargin() + 250, linhaY, writer.getPageWidth() - writer.getMargin(), linhaY);
+                writer.newLine();
+
+                String valorAPagarTexto = "Valor a pagar: " + formatarMoeda(valorAPagar);
+                float valorAPagarX = writer.getPageWidth() - writer.getMargin() - writer.textWidth(valorAPagarTexto, FONTE_NEGRITO, 12);
+                writer.writeAt(valorAPagarTexto, FONTE_NEGRITO, 12, valorAPagarX, writer.getY());
                 writer.newLine();
             }
             writer.moveDown(12);
@@ -295,6 +327,17 @@ public class NotaConferenciaService {
             return "R$ 0,00";
         }
         return MOEDA_FORMATTER.format(valor);
+    }
+
+    private static String formatarPercentual(BigDecimal valor) {
+        if (valor == null) {
+            return "0%";
+        }
+        return valor.stripTrailingZeros().toPlainString() + "%";
+    }
+
+    private static BigDecimal valorSeguro(BigDecimal valor) {
+        return valor == null ? BigDecimal.ZERO : valor;
     }
 
     private static String ajustarTexto(String texto, float maxWidth, PDFont font, float fontSize) throws IOException {

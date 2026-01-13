@@ -26,6 +26,12 @@ public class User {
     @Column(nullable = false, length = 160)
     private String nome;
 
+    @Column(length = 160)
+    private String nomeFantasia;
+
+    @Column(length = 40)
+    private String telefone;
+
     @Column(nullable = false, length = 160, unique = true)
     private String email;
 

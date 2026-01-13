@@ -16,6 +16,8 @@ public class UserMapper {
         return new UserResponseDto(
                 entity.getId(),
                 entity.getNome(),
+                entity.getNomeFantasia(),
+                entity.getTelefone(),
                 entity.getEmail(),
                 entity.getLogin(),
                 entity.getCnpj()
@@ -29,6 +31,8 @@ public class UserMapper {
         User user = new User();
         user.setId(dto.getId());
         user.setNome(dto.getNome());
+        user.setNomeFantasia(dto.getNomeFantasia());
+        user.setTelefone(dto.getTelefone());
         user.setEmail(dto.getEmail());
         user.setLogin(dto.getLogin());
         user.setSenha(dto.getSenha());
@@ -38,6 +42,8 @@ public class UserMapper {
 
     public void updateEntity(UserRequestDto dto, User entity) {
         entity.setNome(dto.getNome());
+        entity.setNomeFantasia(dto.getNomeFantasia());
+        entity.setTelefone(dto.getTelefone());
         entity.setEmail(dto.getEmail());
         entity.setLogin(dto.getLogin());
         entity.setSenha(dto.getSenha());

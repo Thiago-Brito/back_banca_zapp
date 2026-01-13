@@ -18,6 +18,10 @@ public class UserRequestDto {
     @NotBlank
     private String nome;
 
+    private String nomeFantasia;
+
+    private String telefone;
+
     @NotBlank
     @Email
     private String email;

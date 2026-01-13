@@ -23,9 +23,11 @@ import org.springframework.stereotype.Service;
 
 import com.bancazapp.banca_zapp.config.NotaConferenciaProperties;
 import com.bancazapp.banca_zapp.entity.TipoVisita;
+import com.bancazapp.banca_zapp.entity.User;
 import com.bancazapp.banca_zapp.entity.Visita;
 import com.bancazapp.banca_zapp.entity.VisitaItem;
 import com.bancazapp.banca_zapp.exception.ResourceNotFoundException;
+import com.bancazapp.banca_zapp.repository.UserRepository;
 import com.bancazapp.banca_zapp.repository.VisitaRepository;
 
 @Service
@@ -43,11 +45,14 @@ public class NotaConferenciaService {
     private static final BigDecimal CEM = BigDecimal.valueOf(100);
 
     private final VisitaRepository visitaRepository;
+    private final UserRepository userRepository;
     private final NotaConferenciaProperties properties;
 
     public NotaConferenciaService(VisitaRepository visitaRepository,
+                                  UserRepository userRepository,
                                   NotaConferenciaProperties properties) {
         this.visitaRepository = visitaRepository;
+        this.userRepository = userRepository;
         this.properties = properties;
     }
 
@@ -91,11 +96,10 @@ public class NotaConferenciaService {
 
             float headerTextX = margin + 8;
             float headerTextY = headerTop - 18;
-            writer.writeAt(texto(properties.getNomeFantasia()).toUpperCase(Locale.ROOT), FONTE_NEGRITO, 18, headerTextX, headerTextY);
-            writer.writeAt("Razao social: " + texto(properties.getRazaoSocial()), FONTE_PADRAO, 10, headerTextX, headerTextY - 18);
-            writer.writeAt("CNPJ: " + texto(properties.getCnpj()), FONTE_PADRAO, 10, headerTextX, headerTextY - 32);
-            writer.writeAt("Telefone: " + texto(properties.getTelefone()), FONTE_PADRAO, 10, headerTextX, headerTextY - 46);
-            writer.writeAt("Endereco: " + texto(properties.getEndereco()), FONTE_PADRAO, 10, headerTextX, headerTextY - 60);
+            NotaConferenciaInfo info = resolverEmitente();
+            writer.writeAt(info.nomeFantasia().toUpperCase(Locale.ROOT), FONTE_NEGRITO, 18, headerTextX, headerTextY);
+            writer.writeAt("CNPJ: " + info.cnpj(), FONTE_PADRAO, 10, headerTextX, headerTextY - 18);
+            writer.writeAt("Telefone: " + info.telefone(), FONTE_PADRAO, 10, headerTextX, headerTextY - 32);
             writer.setY(headerBottom - ESPACAMENTO_SECAO);
 
             float dadosHeightBase = 88f;
@@ -319,11 +323,10 @@ public class NotaConferenciaService {
             float contentWidth = pageWidth - (margin * 2);
 
             List<ReceiptElement> elementos = new ArrayList<>();
-            adicionarCentralizado(elementos, texto(properties.getNomeFantasia()).toUpperCase(Locale.ROOT), FONTE_NEGRITO, 11);
-            adicionarCentralizado(elementos, "Razao social: " + texto(properties.getRazaoSocial()), FONTE_PADRAO, 8);
-            adicionarCentralizado(elementos, "CNPJ: " + texto(properties.getCnpj()), FONTE_PADRAO, 8);
-            adicionarCentralizado(elementos, "Telefone: " + texto(properties.getTelefone()), FONTE_PADRAO, 8);
-            adicionarCentralizado(elementos, "Endereco: " + texto(properties.getEndereco()), FONTE_PADRAO, 8);
+            NotaConferenciaInfo info = resolverEmitente();
+            adicionarCentralizado(elementos, info.nomeFantasia().toUpperCase(Locale.ROOT), FONTE_NEGRITO, 11);
+            adicionarCentralizado(elementos, "CNPJ: " + info.cnpj(), FONTE_PADRAO, 8);
+            adicionarCentralizado(elementos, "Telefone: " + info.telefone(), FONTE_PADRAO, 8);
             elementos.add(ReceiptElement.separator());
 
             adicionarCentralizado(elementos, "NOTA DE CONFERÊNCIA", FONTE_NEGRITO, 10);
@@ -420,6 +423,18 @@ public class NotaConferenciaService {
 
     private static String texto(String valor) {
         return (valor == null || valor.isBlank()) ? "-" : valor;
+    }
+
+    private NotaConferenciaInfo resolverEmitente() {
+        User user = userRepository.findFirstByOrderByIdAsc().orElse(null);
+        String nomeFantasia = preferir(user != null ? user.getNomeFantasia() : null, properties.getNomeFantasia());
+        String cnpj = preferir(user != null ? user.getCnpj() : null, properties.getCnpj());
+        String telefone = preferir(user != null ? user.getTelefone() : null, properties.getTelefone());
+        return new NotaConferenciaInfo(texto(nomeFantasia), texto(cnpj), texto(telefone));
+    }
+
+    private static String preferir(String valor, String fallback) {
+        return (valor == null || valor.isBlank()) ? fallback : valor;
     }
 
     private static DecimalFormat criarFormatterMoeda() {
@@ -590,6 +605,8 @@ public class NotaConferenciaService {
         }
         writer.drawLine(tableLeft + tableWidth, topY, tableLeft + tableWidth, bottomY);
     }
+
+    private record NotaConferenciaInfo(String nomeFantasia, String cnpj, String telefone) {}
 
     private enum ReceiptElementType {
         TEXT,

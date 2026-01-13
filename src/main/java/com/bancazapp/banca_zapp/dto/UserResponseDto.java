@@ -13,6 +13,8 @@ public class UserResponseDto {
 
     private Long id;
     private String nome;
+    private String nomeFantasia;
+    private String telefone;
     private String email;
     private String login;
     private String cnpj;

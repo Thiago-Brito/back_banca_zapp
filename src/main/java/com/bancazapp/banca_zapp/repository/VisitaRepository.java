@@ -14,6 +14,6 @@ public interface VisitaRepository extends JpaRepository<Visita, UUID> {
     @EntityGraph(attributePaths = {"cliente", "itens", "itens.produto"})
     List<Visita> findByClienteId(Long clienteId);
 
-    @EntityGraph(attributePaths = {"cliente", "itens", "itens.produto"})
+    @EntityGraph(attributePaths = {"cliente", "itens", "itens.produto", "venda"})
     Optional<Visita> findWithItensById(UUID id);
 }

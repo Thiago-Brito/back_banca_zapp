@@ -11,12 +11,15 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.bancazapp.banca_zapp.dto.VisitaDto;
+import com.bancazapp.banca_zapp.dto.VisitaPagamentoRequestDto;
+import com.bancazapp.banca_zapp.dto.VisitaVendaDto;
 import com.bancazapp.banca_zapp.service.NotaConferenciaService;
 import com.bancazapp.banca_zapp.service.VisitaService;
 
@@ -50,6 +53,17 @@ public class VisitaController {
     @GetMapping("/{id}")
     public ResponseEntity<VisitaDto> buscarPorId(@PathVariable UUID id) {
         return ResponseEntity.ok(visitaService.buscarPorId(id));
+    }
+
+    @GetMapping("/{id}/pagamento")
+    public ResponseEntity<VisitaVendaDto> buscarPagamento(@PathVariable UUID id) {
+        return ResponseEntity.ok(visitaService.buscarPagamento(id));
+    }
+
+    @PatchMapping("/{id}/pagamento")
+    public ResponseEntity<VisitaVendaDto> registrarPagamento(@PathVariable UUID id,
+                                                             @Valid @RequestBody VisitaPagamentoRequestDto dto) {
+        return ResponseEntity.ok(visitaService.registrarPagamento(id, dto));
     }
 
     @GetMapping("/{id}/nota-conferencia")

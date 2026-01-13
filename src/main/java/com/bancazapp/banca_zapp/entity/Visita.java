@@ -15,6 +15,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.Enumerated;
 import lombok.AllArgsConstructor;
@@ -51,4 +52,7 @@ public class Visita {
 
     @OneToMany(mappedBy = "visita", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<VisitaItem> itens = new ArrayList<>();
+
+    @OneToOne(mappedBy = "visita", cascade = CascadeType.ALL, orphanRemoval = true)
+    private VisitaVenda venda;
 }

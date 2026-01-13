@@ -1,5 +1,8 @@
 package com.bancazapp.banca_zapp.service;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -10,12 +13,15 @@ import org.springframework.context.ApplicationEventPublisher;
 
 import com.bancazapp.banca_zapp.dto.VisitaDto;
 import com.bancazapp.banca_zapp.dto.VisitaItemDto;
+import com.bancazapp.banca_zapp.dto.VisitaPagamentoRequestDto;
+import com.bancazapp.banca_zapp.dto.VisitaVendaDto;
 import com.bancazapp.banca_zapp.entity.Cliente;
 import com.bancazapp.banca_zapp.entity.EstoqueCliente;
 import com.bancazapp.banca_zapp.entity.Produto;
 import com.bancazapp.banca_zapp.entity.TipoVisita;
 import com.bancazapp.banca_zapp.entity.Visita;
 import com.bancazapp.banca_zapp.entity.VisitaItem;
+import com.bancazapp.banca_zapp.entity.VisitaVenda;
 import com.bancazapp.banca_zapp.event.VisitaCriadaEvent;
 import com.bancazapp.banca_zapp.exception.ResourceNotFoundException;
 import com.bancazapp.banca_zapp.mapper.VisitaMapper;
@@ -112,6 +118,75 @@ public class VisitaService {
         return visitaMapper.toDto(visita);
     }
 
+    @Transactional(readOnly = true)
+    public VisitaVendaDto buscarPagamento(UUID id) {
+        Visita visita = visitaRepository.findWithItensById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Visita nao encontrada: " + id));
+        if (visita.getTipo() != TipoVisita.VENDA) {
+            throw new IllegalArgumentException("Visita nao e do tipo VENDA.");
+        }
+        BigDecimal percentual = valorSeguro(visita.getCliente().getComissao());
+        BigDecimal valorTotalBruto = calcularValorTotal(visita);
+        BigDecimal valorTotal = aplicarComissao(valorTotalBruto, percentual);
+
+        VisitaVenda venda = visita.getVenda();
+        if (venda == null) {
+            return new VisitaVendaDto(valorTotal, BigDecimal.ZERO, false, null);
+        }
+        return new VisitaVendaDto(
+                valorTotal,
+                valorSeguro(venda.getValorPago()),
+                venda.isPago(),
+                venda.getDataPagamento()
+        );
+    }
+
+    @Transactional
+    public VisitaVendaDto registrarPagamento(UUID id, VisitaPagamentoRequestDto dto) {
+        Visita visita = visitaRepository.findWithItensById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Visita nao encontrada: " + id));
+        if (visita.getTipo() != TipoVisita.VENDA) {
+            throw new IllegalArgumentException("Visita nao e do tipo VENDA.");
+        }
+        BigDecimal percentual = valorSeguro(visita.getCliente().getComissao());
+        BigDecimal valorPago = valorSeguro(dto.getValorPago());
+        if (valorPago.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Valor pago deve ser maior que zero.");
+        }
+
+        VisitaVenda venda = visita.getVenda();
+        if (venda == null) {
+            venda = new VisitaVenda();
+            venda.setVisita(visita);
+            venda.setValorPago(BigDecimal.ZERO);
+            venda.setPago(false);
+            visita.setVenda(venda);
+        } else if (venda.isPago()) {
+            throw new IllegalArgumentException("Visita ja esta paga.");
+        }
+
+        BigDecimal valorTotalBruto = calcularValorTotal(visita);
+        BigDecimal valorTotal = aplicarComissao(valorTotalBruto, percentual);
+        venda.setValorTotal(valorTotal);
+
+        BigDecimal novoPago = valorSeguro(venda.getValorPago()).add(valorPago);
+        if (novoPago.compareTo(valorTotal) > 0) {
+            throw new IllegalArgumentException("Pagamento acima do saldo.");
+        }
+
+        venda.setValorPago(novoPago);
+        if (novoPago.compareTo(valorTotal) == 0) {
+            venda.setPago(true);
+            venda.setDataPagamento(LocalDate.now());
+        } else {
+            venda.setPago(false);
+            venda.setDataPagamento(null);
+        }
+
+        Visita salva = visitaRepository.save(visita);
+        return toVendaDto(salva.getVenda());
+    }
+
     private Cliente buscarCliente(Long id) {
         return clienteRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente nao encontrado: " + id));
@@ -174,6 +249,47 @@ public class VisitaService {
         int vendido = valor(itemDto.getVendido());
         int retirado = valor(itemDto.getRetirado());
         return possuia + entregue - vendido - retirado;
+    }
+
+    private BigDecimal calcularValorTotal(Visita visita) {
+        return visita.getItens().stream()
+                .map(item -> {
+                    if (item.getProduto() == null || item.getProduto().getPreco() == null) {
+                        return BigDecimal.ZERO;
+                    }
+                    int vendido = item.getVendido() == null ? 0 : item.getVendido();
+                    return item.getProduto().getPreco().multiply(BigDecimal.valueOf(vendido));
+                })
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal aplicarComissao(BigDecimal valor, BigDecimal percentual) {
+        if (valor == null) {
+            return BigDecimal.ZERO;
+        }
+        if (percentual == null || percentual.compareTo(BigDecimal.ZERO) <= 0) {
+            return valor;
+        }
+        BigDecimal desconto = valor.multiply(percentual)
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        BigDecimal liquido = valor.subtract(desconto);
+        return liquido.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : liquido;
+    }
+
+    private BigDecimal valorSeguro(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
+    private VisitaVendaDto toVendaDto(VisitaVenda venda) {
+        if (venda == null) {
+            return null;
+        }
+        return new VisitaVendaDto(
+                venda.getValorTotal(),
+                venda.getValorPago(),
+                venda.isPago(),
+                venda.getDataPagamento()
+        );
     }
 
     private int valor(Integer value) {
